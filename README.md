@@ -1,12 +1,12 @@
 # Opal — AI Lead Enrichment Pipeline Template
 
-> A fully automated framework for finding, enriching, scoring, and logging leads — powered by AI and built on n8n. Zero manual input required.
+> A fully automated framework for finding, enriching, scoring, and logging leads that is powered by AI and built on n8n.
 
 ---
 
 ## What This Template Does
 
-Opal is a set-it-and-forget-it lead pipeline. Once activated, it runs every week on its own — finding fresh leads, researching them with AI, scoring them, and writing the results to a Google Sheet. You never touch the workflow between runs.
+Opal produces a lead pipeline. Once activated, it runs every week on its own and finds fresh leads, researching them with AI, scoring them, and writing the results to a Google Sheet. You never touch the workflow between runs.
 
 1. Searches for new leads based on filters you define (title, sector, location)
 2. Finds any missing emails via Hunter.io
