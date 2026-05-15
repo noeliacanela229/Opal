@@ -141,7 +141,7 @@ Real pipelines built on this template by Opal Automations.
 
 ---
 
-### ⚽ Soccer Academy AI Lead Engine
+### Soccer Academy AI Lead Engine
 **Client:** Rodrigo Morfin
 
 An automated lead generation system built for a soccer recruiting startup. The pipeline permanently replaced manual lead searching by continuously finding soccer organizations across the U.S. and identifying the right decision makers at each one.
@@ -167,7 +167,7 @@ Club Director → Academy Director → Head Coach
 
 ---
 
-### 💼 Oink Investor CRM
+### Oink Investor CRM
 **Client:** Oink
 
 A multi-source investor discovery and qualification system that finds, scores, and loads the right investors into a CRM automatically.
