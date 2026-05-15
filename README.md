@@ -1,12 +1,12 @@
 # Opal — AI Lead Enrichment Pipeline Template
 
-> A fully automated framework for finding, enriching, scoring, and logging leads that is powered by AI and built on n8n.
+> An automated framework for finding, enriching, scoring, and logging leads which are powered by AI and built on n8n.
 
 ---
 
 ## What This Template Does
 
-Opal produces a lead pipeline. Once activated, it runs every week on its own and finds fresh leads, researching them with AI, scoring them, and writing the results to a Google Sheet. You never touch the workflow between runs.
+Opal is a lead pipeline. Once activated, it runs, finding fresh leads, researching them with AI, scoring them, and writing the results to a Google Sheet.
 
 1. Searches for new leads based on filters you define (title, sector, location)
 2. Finds any missing emails via Hunter.io
@@ -124,7 +124,7 @@ To change what Claude scores for, edit the prompt inside the `Claude Enrichment`
 
 ## Adapting to a New Use Case
 
-Change the Apollo search filters and the Claude scoring prompt — everything else stays the same.
+Change the Apollo search filters and the Claude scoring prompt, everything else stays the same.
 
 | Use Case | Apollo Filters | Claude Prompt Change |
 |---|---|---|
@@ -132,6 +132,81 @@ Change the Apollo search filters and the Claude scoring prompt — everything el
 | Sales prospecting | `VP Sales`, `Head of Revenue` | Score by company size, budget signals |
 | Recruiting | `Senior Engineer`, `Staff Engineer` | Score by skills match |
 | Partnerships | `Head of Partnerships`, `BD Director` | Score by sector alignment |
+
+---
+
+## Example Projects by Opal
+
+Real pipelines built on this template by Opal Automations.
+
+---
+
+### ⚽ Soccer Academy AI Lead Engine
+**Client:** Rodrigo Morfin
+
+An automated lead generation system built for a soccer recruiting startup. The pipeline permanently replaced manual lead searching by continuously finding soccer organizations across the U.S. and identifying the right decision makers at each one.
+
+**What it targeted:**
+Youth soccer clubs, academies, high school programs, college programs, and semi-pro/pro clubs, prioritizing competitive organizations at the U13 level and above with budget for partnerships.
+
+**Decision makers it found (in priority order):**
+Club Director → Academy Director → Head Coach
+
+**Data collected per lead:**
+
+| Field | |
+|---|---|
+| Club / Academy Name | Email Address |
+| Website | Phone Number |
+| Decision Maker Name | LinkedIn Profile |
+| Job Title | Location |
+
+**Tools used:** Apollo.io · Hunter.io · Claude AI · Google Sheets · n8n
+
+**How it ran:** Weekly schedule — added new organizations, found decision makers, enriched contact info, and prevented duplicates automatically.
+
+---
+
+### 💼 Oink Investor CRM
+**Client:** Oink
+
+A multi-source investor discovery and qualification system that finds, scores, and loads the right investors into a CRM automatically.
+
+**What it targeted:**
+Pre-seed and early stage investors in Fintech, Consumer, and Crypto — California priority, U.S. based required. Sources included LinkedIn, Crunchbase, AngelList, and Twitter/X for crypto VCs.
+
+**Decision makers it found:**
+General Partners · Partners · Managing Partners · Associates · Venture Scouts
+
+**Data collected per lead:**
+
+| Field | |
+|---|---|
+| Name | Fund Size |
+| Title | Average Check Size |
+| Investment Group | Stage Focus |
+| Firm Website | Sector Focus |
+| Email | Recent Investment Activity |
+| LinkedIn | Fit Score + Tier |
+| Location | Personalized Outreach Angle |
+
+**Fit scoring (0–100):**
+
+| Factor | Weight |
+|---|---|
+| Stage Fit | 25 pts |
+| Sector Fit | 25 pts |
+| Recent Investment Activity | 20 pts |
+| Check Size Alignment | 15 pts |
+| Geography Fit | 15 pts |
+
+Investors scoring 80–100 → **Tier A** · 60–79 → **Tier B** · Below 60 → excluded from CRM
+
+**Tools used:** LinkedIn · Crunchbase · AngelList · Twitter/X · Claude AI · Google Sheets · n8n
+
+**How it ran:** Scraped for new investors into a staging layer, re-scored, enriched missing fields, and promoted only qualified Tier A and B investors into the active CRM. Duplicate prevention used LinkedIn URL as the primary unique key.
+
+**Target outcome:** 200–300 fully qualified investors in CRM with all fields populated.
 
 ---
 
