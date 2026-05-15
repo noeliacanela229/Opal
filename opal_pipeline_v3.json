@@ -1,0 +1,165 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "3f77ae12-193e-47f5-90a0-0d512cec747e",
+      "name": "Weekly Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [17728, 6208]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Automatically calculates a new page each week so you never get duplicate leads\nconst now = new Date();\nconst weekNumber = Math.floor(now.getTime() / (7 * 24 * 60 * 60 * 1000));\nconst page = (weekNumber % 50) + 1;\n\n// Search Apollo for leads — edit these filters to match your target\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://api.apollo.io/v1/mixed_people/search',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-Api-Key': # insert key here ,\n    'Cache-Control': 'no-cache'\n  },\n  body: {\n    q_keywords: 'angel investor fintech crypto',\n    person_titles: ['angel investor', 'investor', 'venture capitalist'],\n    person_locations: ['United States'],\n    per_page: 10,\n    page: page\n  },\n  json: true\n});\n\nconst people = response.people || [];\n\nif (people.length === 0) {\n  throw new Error('Apollo returned no results for page ' + page + '. Check your API key or search filters.');\n}\n\n// Map Apollo fields to clean format — all enrichment comes from Apollo search directly\nreturn people.map(person => {\n  const org = person.organization || {};\n  const location = [person.city, person.state, person.country].filter(Boolean).join(', ');\n\n  const linkedinRaw = person.linkedin_url || '';\n  const linkedin = linkedinRaw\n    ? 'https://www.linkedin.com/in/' + linkedinRaw.split('/in/').pop().replace(/\\/+$/, '')\n    : '';\n\n  const toTitle = s => String(s || '').trim().replace(/\\b\\w/g, c => c.toUpperCase());\n\n  return {\n    json: {\n      firstName: person.first_name || '',\n      lastName: person.last_name || '',\n      name: toTitle((person.first_name || '') + ' ' + (person.last_name || '')),\n      investmentGroup: toTitle(org.name || person.organization_name || ''),\n      website: org.primary_domain || org.website_url || '',\n      title: person.title || '',\n      location: location,\n      linkedin: linkedin,\n      email: person.email || ''\n    }\n  };\n});\n"
+      },
+      "id": "e04230ab-02ac-4e3e-a0bc-9bfbb2f1144c",
+      "name": "Apollo Search & Split",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [17980, 6208]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hunter.io/v2/email-finder?domain={{ $json.website || 'gmail.com' }}&first_name={{ $json.firstName }}&last_name={{ $json.lastName }}&api_key= #input key here ",
+        "options": {
+          "response": { "response": { "neverError": true } },
+          "timeout": 30000
+        }
+      },
+      "id": "7fd48178-f397-4f3b-9b35-fc63de64dc20",
+      "name": "Hunter Find Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [18240, 6208]
+    },
+    {
+      "parameters": {
+        "jsCode": "const hunterResponse = $input.item.json;\nconst prevData = $('Apollo Search & Split').item.json;\n\nconst data = hunterResponse.data || {};\n\n// Use Apollo email first, fall back to Hunter\nconst email = prevData.email || data.email || '';\n\n// Use Apollo LinkedIn first, fall back to Hunter\nconst linkedin = prevData.linkedin ||\n  (data.linkedin_url ? ('https://' + data.linkedin_url.replace(/^https?:\\/\\//, '')) : '') || '';\n\nreturn [{ json: {\n  name: prevData.name,\n  firstName: prevData.firstName,\n  lastName: prevData.lastName,\n  title: prevData.title,\n  investmentGroup: prevData.investmentGroup,\n  website: prevData.website,\n  location: prevData.location,\n  linkedin,\n  email\n} }];\n"
+      },
+      "id": "885073c0-bfa3-468c-9500-57882ca1cfc9",
+      "name": "Merge Hunter Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [18500, 6208]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\n\n// Bing search for LinkedIn if still missing after Apollo + Hunter\nlet linkedin = d.linkedin || '';\nif (!linkedin || !linkedin.includes('linkedin.com/in/')) {\n  try {\n    const query = encodeURIComponent(d.name + ' ' + d.investmentGroup + ' linkedin.com/in/');\n    const searchResult = await this.helpers.httpRequest({\n      method: 'GET',\n      url: 'https://www.bing.com/search?q=' + query,\n      headers: { 'User-Agent': 'Mozilla/5.0' }\n    });\n    const html = typeof searchResult === 'string' ? searchResult : '';\n    const matches = html.match(/https?:\\/\\/(www\\.)?linkedin\\.com\\/in\\/[a-zA-Z0-9\\-_%]+/g);\n    if (matches && matches.length > 0) {\n      linkedin = matches[0].split('?')[0];\n      if (!linkedin.startsWith('https://www.')) {\n        linkedin = 'https://www.linkedin.com/in/' + linkedin.split('/in/')[1];\n      }\n    }\n  } catch (e) {\n    console.log('Bing search error:', e.message);\n  }\n}\n\n// Claude AI enrichment and scoring\nconst prompt = 'Based on your training knowledge, provide information about this angel investor: ' + d.name + ', title ' + d.title + ', associated with ' + d.investmentGroup + '. LinkedIn: ' + (linkedin || 'none') + '. Return ONLY a valid JSON object with exactly these fields: correctedTitle (their actual title - if they are purely an angel investor with no institutional role use Angel Investor - if they are an angel investor AND have an institutional role combine both like Angel Investor and Partner at Their Firm - if you cannot confirm angel investing activity use their known professional title), confirmedAngel (true if they do personal angel investing individually or via syndicate, false only if zero personal investing activity), fundSize (known AUM or personal fund size as a string or empty string), avgCheckSize (typical angel check size range as a string or empty string), stageFocus (investment stages they focus on), sectorFocus (sectors they invest in), recentActivity (Yes or No based on whether they have been actively investing in the last 1-2 years), reachable (false if this person likely has over 10000 LinkedIn followers - true only if they likely have under 10000 LinkedIn followers and are accessible to cold outreach from unknown founders), fitScore (exactly Tier 1 or Tier 2 for fit with a pre-seed fintech consumer or crypto startup in California - Tier 1 means they have angel investing or personal investing in their LinkedIn title AND have blockchain or crypto or fintech investment history AND are under 10000 followers - Tier 2 means they angel invest but may not have explicit fintech or crypto focus), note (one sentence summarizing their investing focus and how well they fit a pre-seed fintech consumer or crypto startup - be honest about whether they are a good fit or not). No markdown no code blocks just raw JSON.';\n\nconst result = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://api.anthropic.com/v1/messages',\n  headers: {\n    'x-api-key': '#input api key here',\n    'anthropic-version': '2023-06-01',\n    'Content-Type': 'application/json'\n  },\n  body: {\n    model: 'claude-sonnet-4-20250514',\n    max_tokens: 1000,\n    messages: [{ role: 'user', content: prompt }]\n  },\n  json: true\n});\n\nlet enriched = {\n  correctedTitle: '',\n  confirmedAngel: false,\n  fundSize: '',\n  avgCheckSize: '',\n  stageFocus: '',\n  sectorFocus: '',\n  recentActivity: '',\n  fitScore: '',\n  note: '',\n  reachable: false\n};\n\ntry {\n  const contentBlocks = result.content || [];\n  let text = '';\n  for (const block of contentBlocks) {\n    if (block.type === 'text') { text = block.text; }\n  }\n  if (text) {\n    const stripped = text.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n    enriched = JSON.parse(stripped);\n  }\n} catch (e) {\n  console.log('Claude parse error:', e.message);\n}\n\nconst toStr = v => Array.isArray(v) ? v.join(', ') : (v || '');\nconst title = toStr(enriched.correctedTitle) || d.title;\n\nreturn [{\n  json: {\n    name: d.name,\n    title: title,\n    investmentGroup: d.investmentGroup,\n    website: d.website,\n    location: d.location,\n    linkedin: linkedin,\n    email: d.email,\n    fundSize: toStr(enriched.fundSize),\n    avgCheckSize: toStr(enriched.avgCheckSize),\n    stageFocus: toStr(enriched.stageFocus),\n    sectorFocus: toStr(enriched.sectorFocus),\n    recentActivity: toStr(enriched.recentActivity),\n    fitScore: toStr(enriched.fitScore),\n    note: toStr(enriched.note),\n    reachable: enriched.reachable === true || String(enriched.reachable).toLowerCase() === 'true'\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [18760, 6208],
+      "id": "5067f751-442c-417c-98d7-2e28c9b3d618",
+      "name": "Claude Enrichment"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\n\nconst hasName = (d.name || '').trim().length > 0;\nconst hasInvestmentGroup = typeof d.investmentGroup === 'string' && d.investmentGroup.trim().length > 0;\nconst hasLinkedin = typeof d.linkedin === 'string' && d.linkedin.trim().length > 0;\nconst hasEmail = typeof d.email === 'string' && d.email.trim().length > 0;\n\nif (!hasName || !hasInvestmentGroup || !hasLinkedin || !hasEmail) {\n  return [];\n}\n\nreturn [{ json: {\n  ...d,\n  fitScore: d.fitScore || 'Unscored',\n  fundSize: d.fundSize || '',\n  avgCheckSize: d.avgCheckSize || '',\n  stageFocus: d.stageFocus || '',\n  sectorFocus: d.sectorFocus || '',\n  recentActivity: d.recentActivity || '',\n  note: d.note || ''\n} }];\n"
+      },
+      "id": "a5200d6c-c8b4-4f19-8fbd-ac694a5e8422",
+      "name": "Filter Complete Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [19020, 6208]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1sAjfV8BE8PyNIiJHGSR08_cBz6erg7xA_gG1t2b6Jc8",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.name }}",
+            "Title": "={{ $json.title }}",
+            "Investment Group Name": "={{ $json.investmentGroup }}",
+            "Website": "={{ $json.website }}",
+            "Location": "={{ $json.location }}",
+            "LinkedIn": "={{ $json.linkedin }}",
+            "Email": "={{ $json.email }}",
+            "Fund Size": "={{ $json.fundSize }}",
+            "Avg Check Size": "={{ $json.avgCheckSize }}",
+            "Stage Focus": "={{ $json.stageFocus }}",
+            "Sector Focus": "={{ $json.sectorFocus }}",
+            "Recent Activity": "={{ $json.recentActivity }}",
+            "Fit Score": "={{ $json.fitScore }}",
+            "note": "={{ $json.note }}"
+          },
+          "matchingColumns": ["Investment Group Name"],
+          "schema": [
+            { "id": "Name", "displayName": "Name", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Title", "displayName": "Title", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Investment Group Name", "displayName": "Investment Group Name", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Website", "displayName": "Website", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Location", "displayName": "Location", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "LinkedIn", "displayName": "LinkedIn", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Email", "displayName": "Email", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Fund Size", "displayName": "Fund Size", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Avg Check Size", "displayName": "Avg Check Size", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Stage Focus", "displayName": "Stage Focus", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Sector Focus", "displayName": "Sector Focus", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Recent Activity", "displayName": "Recent Activity", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Fit Score", "displayName": "Fit Score", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "note", "displayName": "note", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true, "removed": false }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "25aa90ee-a71c-414b-9c76-89ac523508b3",
+      "name": "Write to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [19280, 6208],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "mQUi69q8yLIoN0id",
+          "name": "Google Sheets account 5"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weekly Trigger": {
+      "main": [[{ "node": "Apollo Search & Split", "type": "main", "index": 0 }]]
+    },
+    "Apollo Search & Split": {
+      "main": [[{ "node": "Hunter Find Email", "type": "main", "index": 0 }]]
+    },
+    "Hunter Find Email": {
+      "main": [[{ "node": "Merge Hunter Data", "type": "main", "index": 0 }]]
+    },
+    "Merge Hunter Data": {
+      "main": [[{ "node": "Claude Enrichment", "type": "main", "index": 0 }]]
+    },
+    "Claude Enrichment": {
+      "main": [[{ "node": "Filter Complete Leads", "type": "main", "index": 0 }]]
+    },
+    "Filter Complete Leads": {
+      "main": [[{ "node": "Write to Google Sheets", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "332ec3ee716bddf01d18a8d6ed3acb9c3e4d1cec0c8a5c9cc978b70bc41cad8b"
+  }
+}
